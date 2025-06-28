@@ -483,14 +483,22 @@ class YouTubeDownloaderGUI:
         if quality == "Audio Only (MP3)":
             ydl_opts.update({
                 'format': 'bestaudio/best',
-                'postprocessors': [{
-                    'key': 'FFmpegExtractAudio',
-                    'preferredcodec': 'mp3',
-                    'preferredquality': '192',
-                }, {
-                    'key': 'EmbedThumbnail',  # Embed thumbnail as album art
-                }],
+                'postprocessors': [
+                    {
+                        'key': 'FFmpegExtractAudio',
+                        'preferredcodec': 'mp3',
+                        'preferredquality': '192',
+                    },
+                    {
+                        'key': 'EmbedThumbnail',  # Embed thumbnail as album art
+                    },
+                    {
+                        'key': 'FFmpegMetadata',  # Ensure metadata is written
+                    }
+                ],
                 'writethumbnail': True,  # Download thumbnail
+                'embedthumbnail': True,  # Explicitly request embedding
+                'addmetadata': True,     # Add metadata
             })
         elif quality == "Best Quality":
             ydl_opts['format'] = 'bestvideo+bestaudio/best'
