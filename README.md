@@ -11,7 +11,87 @@ A simple and modern GUI application for downloading YouTube videos and playlists
 - Modern, user-friendly interface
 - Progress tracking with file size information
 
-## Quick Start
+## Quick Start (Executables)
+
+### Download and Run
+
+1. **Download the latest release** from the releases page
+2. **Run YouDownload-Installer.exe** for easy setup
+3. **Or run YouDownload.exe** directly (requires dependencies installed)
+
+## Easy Installation (Recommended)
+
+### For Windows Users
+
+1. **Download the project**
+   ```bash
+   git clone https://github.com/yourusername/YouDownload.git
+   cd YouDownload
+   ```
+
+2. **Run the installer**
+   - Double-click `install.bat` or
+   - Run `python install.py` or
+   - Run `YouDownload-Installer.exe` (if built)
+
+3. **Follow the installer wizard**
+   - The installer will check your system requirements
+   - Install Python dependencies automatically
+   - Guide you through FFmpeg installation
+   - Create desktop shortcuts
+
+### For Other Operating Systems
+
+1. **Download the project**
+   ```bash
+   git clone https://github.com/yourusername/YouDownload.git
+   cd YouDownload
+   ```
+
+2. **Run the installer**
+   ```bash
+   python install.py
+   ```
+
+3. **Follow the installer wizard**
+
+## Building Executables
+
+### Prerequisites for Building
+
+- Python 3.7+
+- PyInstaller (will be installed automatically)
+
+### Build Steps
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/yourusername/YouDownload.git
+   cd YouDownload
+   ```
+
+2. **Build executables**
+   ```bash
+   # Windows
+   build.bat
+   
+   # Or manually
+   python build_exe.py
+   ```
+
+3. **Find the executables**
+   - `dist/YouDownload.exe` - Main application
+   - `dist/YouDownload-Installer.exe` - Installation wizard
+
+### Build Options
+
+The build script creates:
+- **Single-file executables** (no installation required)
+- **Windowed mode** (no console window)
+- **Custom icons** from the logo files
+- **Embedded resources** (images, requirements)
+
+## Manual Installation (Advanced Users)
 
 ### Prerequisites
 
@@ -91,6 +171,11 @@ pip install yt-dlp
 - Check your internet connection
 - Ensure the YouTube URL is valid
 - Try a different video (some may have restrictions)
+
+**Executable issues**
+- Make sure all icon files are present
+- Run `python build_exe.py` to rebuild
+- Check that PyInstaller is installed: `pip install pyinstaller`
 
 ## Requirements
 
