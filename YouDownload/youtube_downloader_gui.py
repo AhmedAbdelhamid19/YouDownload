@@ -4,6 +4,8 @@ import threading
 import os
 import yt_dlp
 from urllib.parse import urlparse
+import traceback
+import shutil
 
 class YouTubeDownloaderGUI:
     def __init__(self, root):
@@ -34,6 +36,25 @@ class YouTubeDownloaderGUI:
         ]
         
         self.setup_ui()
+        self.check_dependencies()
+        
+    def check_dependencies(self):
+        """Check for yt-dlp and ffmpeg, disable download if missing."""
+        errors = []
+        # Check yt-dlp
+        try:
+            import yt_dlp
+        except ImportError:
+            errors.append("yt-dlp is not installed. Please run: pip install yt-dlp")
+        # Check ffmpeg
+        if shutil.which("ffmpeg") is None:
+            errors.append("FFmpeg is not installed or not in PATH. Please install FFmpeg.")
+        if errors:
+            self.download_btn.config(state="disabled")
+            self.status_text.set("Dependency error!")
+            self.show_error("\n".join(errors), log_only=True)
+        else:
+            self.download_btn.config(state="normal")
         
     def setup_ui(self):
         # Main frame
@@ -164,7 +185,8 @@ class YouTubeDownloaderGUI:
                 self.root.after(0, self.update_video_info, info)
                 
         except Exception as e:
-            self.root.after(0, lambda: self.show_error(f"Error fetching video info: {str(e)}"))
+            tb = traceback.format_exc()
+            self.root.after(0, lambda: self.show_error(f"Error fetching video info: {str(e)}\n\n{tb}"))
         finally:
             self.root.after(0, lambda: self.download_btn.config(state="normal"))
             
@@ -269,7 +291,8 @@ class YouTubeDownloaderGUI:
             self.root.after(0, self.download_completed)
             
         except Exception as e:
-            self.root.after(0, lambda: self.show_error(f"Download failed: {str(e)}"))
+            tb = traceback.format_exc()
+            self.root.after(0, lambda: self.show_error(f"Download failed: {str(e)}\n\n{tb}"))
         finally:
             self.root.after(0, lambda: self.download_btn.config(state="normal"))
             
@@ -294,10 +317,19 @@ class YouTubeDownloaderGUI:
         self.status_text.set("Download completed successfully!")
         messagebox.showinfo("Success", "Video downloaded successfully!")
         
-    def show_error(self, message):
+    def show_error(self, message, log_only=False):
         """Show error message"""
         self.status_text.set("Error occurred")
-        messagebox.showerror("Error", message)
+        # Log error to file
+        with open("error_log.txt", "a", encoding="utf-8") as f:
+            f.write(message + "\n" + ("-"*60) + "\n")
+        # Show in info box
+        self.info_text.config(state=tk.NORMAL)
+        self.info_text.delete(1.0, tk.END)
+        self.info_text.insert(tk.END, message)
+        self.info_text.config(state=tk.DISABLED)
+        if not log_only:
+            messagebox.showerror("Error", message)
 
 def main():
     root = tk.Tk()
