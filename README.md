@@ -1,190 +1,213 @@
-# YouDownload - YouTube Video Downloader
+# YouDownload - Enhanced YouTube Video Downloader
 
-A simple and modern GUI application for downloading YouTube videos and playlists.
+A modern, user-friendly YouTube video and playlist downloader with advanced features including stop/resume functionality, network error protection, and automatic retry mechanisms.
 
-## Features
+## ✨ New Features in v2.1
 
-- Download single videos or entire playlists
-- Multiple quality options (1080p, 720p, 480p, 360p, Best Quality)
-- Audio-only downloads with embedded album art
-- Video selection for playlists with thumbnails
-- Modern, user-friendly interface
-- Progress tracking with file size information
+### 🛑 Stop and Resume Functionality
+- **Stop Download**: Pause downloads at any time with the red "Stop Download" button
+- **Resume Download**: Continue downloads from where they left off with the green "Resume Download" button
+- **Partial Download Resume**: Automatically resumes interrupted downloads using yt-dlp's built-in resume capability
 
-## Quick Start (Executables)
+### 🌐 Network Error Protection
+- **Automatic Retry**: Automatically retries failed downloads up to 3 times with 5-second delays
+- **Network Detection**: Detects network connectivity issues and provides helpful error messages
+- **Connection Testing**: Built-in network test button to verify internet connectivity
+- **Smart Error Handling**: Distinguishes between network errors and other issues
 
-### Download and Run
+### 📊 Enhanced Progress Tracking
+- **Download Speed**: Shows real-time download speed in MB/s
+- **Dual Progress Bars**: Overall progress for playlists and individual video progress
+- **Detailed Status**: Comprehensive status messages with retry attempts and error details
+- **Failure Reporting**: Detailed reports for playlist downloads showing which videos failed
 
-1. **Download the latest release** from the releases page
-2. **Run YouDownload-Installer.exe** for easy setup
-3. **Or run YouDownload.exe** directly (requires dependencies installed)
+## 🚀 Features
 
-## Easy Installation (Recommended)
+### Core Functionality
+- **Single Video Download**: Download individual YouTube videos in various qualities
+- **Playlist Support**: Download entire playlists or select specific videos
+- **Quality Selection**: Choose from multiple video qualities (360p to 1080p)
+- **Audio Extraction**: Download audio-only files in MP3 format with embedded album art
+- **Thumbnail Support**: View video thumbnails in playlist selection
 
-### For Windows Users
+### User Interface
+- **Modern Design**: Clean, professional interface with custom styling
+- **Responsive Layout**: Adapts to different window sizes
+- **Progress Visualization**: Real-time progress bars and status updates
+- **Error Logging**: Detailed error logs for troubleshooting
 
-1. **Download the project**
-   ```bash
-   git clone https://github.com/yourusername/YouDownload.git
-   cd YouDownload
-   ```
+### Technical Features
+- **Cross-Platform**: Works on Windows, macOS, and Linux
+- **Dependency Management**: Automatic checks for required software (yt-dlp, FFmpeg)
+- **Threading**: Non-blocking downloads with background processing
+- **Error Recovery**: Robust error handling and recovery mechanisms
 
-2. **Run the installer**
-   - Double-click `install.bat` or
-   - Run `python install.py` or
-   - Run `YouDownload-Installer.exe` (if built)
+## 📋 Requirements
 
-3. **Follow the installer wizard**
-   - The installer will check your system requirements
-   - Install Python dependencies automatically
-   - Guide you through FFmpeg installation
-   - Create desktop shortcuts
+### Software Dependencies
+- **Python 3.7+**: Required for running the application
+- **yt-dlp**: YouTube downloader library (automatically installed)
+- **FFmpeg**: Media processing tool (required for audio extraction and video processing)
 
-### For Other Operating Systems
+### Python Packages
+```
+yt-dlp>=2023.12.30
+Pillow>=9.0.0
+requests>=2.25.0
+```
 
-1. **Download the project**
-   ```bash
-   git clone https://github.com/yourusername/YouDownload.git
-   cd YouDownload
-   ```
+## 🛠️ Installation
 
-2. **Run the installer**
-   ```bash
-   python install.py
-   ```
+### Option 1: Quick Install (Recommended)
+1. **Download the installer**: Use the provided Windows installer for easy setup
+2. **Run installer**: Double-click the installer and follow the wizard
+3. **Launch application**: Use the desktop shortcut or start menu entry
 
-3. **Follow the installer wizard**
-
-## Building Executables
-
-### Prerequisites for Building
-
-- Python 3.7+
-- PyInstaller (will be installed automatically)
-
-### Build Steps
-
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/yourusername/YouDownload.git
-   cd YouDownload
-   ```
-
-2. **Build executables**
-   ```bash
-   # Windows
-   build.bat
-   
-   # Or manually
-   python build_exe.py
-   ```
-
-3. **Find the executables**
-   - `dist/YouDownload.exe` - Main application
-   - `dist/YouDownload-Installer.exe` - Installation wizard
-
-### Build Options
-
-The build script creates:
-- **Single-file executables** (no installation required)
-- **Windowed mode** (no console window)
-- **Custom icons** from the logo files
-- **Embedded resources** (images, requirements)
-
-## Manual Installation (Advanced Users)
-
-### Prerequisites
-
-1. **Python 3.7 or higher** - Download from [python.org](https://www.python.org/downloads/)
-2. **FFmpeg** - Required for video processing and audio conversion
-
-### Installation Steps
-
-1. **Download the project**
-   ```bash
-   git clone https://github.com/yourusername/YouDownload.git
-   cd YouDownload
-   ```
-
-2. **Install Python dependencies**
+### Option 2: Manual Installation
+1. **Clone or download** this repository
+2. **Install Python dependencies**:
    ```bash
    cd YouDownload
    pip install -r requirements.txt
    ```
-
-3. **Install FFmpeg** (if not already installed)
-   
-   **Windows:**
-   - Download from [ffmpeg.org](https://ffmpeg.org/download.html)
-   - Extract to a folder (e.g., `C:\ffmpeg`)
-   - Add to PATH: Add `C:\ffmpeg\bin` to your system PATH environment variable
-   
-   **Alternative (Windows):**
-   - Use Chocolatey: `choco install ffmpeg`
-   - Use Winget: `winget install ffmpeg`
-
-   **macOS:**
+3. **Install FFmpeg** (if not already installed):
    ```bash
-   brew install ffmpeg
+   # Windows: Download from https://ffmpeg.org/download.html
+   # macOS: brew install ffmpeg
+   # Linux: sudo apt install ffmpeg
    ```
-
-   **Linux (Ubuntu/Debian):**
-   ```bash
-   sudo apt update
-   sudo apt install ffmpeg
-   ```
-
-4. **Run the application**
+4. **Run the application**:
    ```bash
    python youtube_downloader_gui.py
    ```
 
-## How to Use
+### Option 3: Build Executable
+1. **Install PyInstaller**:
+   ```bash
+   pip install pyinstaller
+   ```
+2. **Build executable**:
+   ```bash
+   python build_exe.py
+   ```
+3. **Find the executable** in the `dist` folder
 
-1. **Enter a YouTube URL** - Paste any YouTube video or playlist URL
-2. **Click "Test URL"** - This will fetch video information and show available options
-3. **Select quality** - Choose from the dropdown menu
-4. **Choose download location** - Click "Browse" to select where to save files
-5. **For playlists** - Select which videos you want to download
-6. **Click "Download"** - Start the download process
+## 🎯 Usage
 
-## Audio Downloads
+### Basic Download
+1. **Paste YouTube URL**: Enter a video or playlist URL
+2. **Select Quality**: Choose your preferred video quality
+3. **Choose Location**: Select download folder
+4. **Start Download**: Click "Start Download"
 
-When selecting "Audio Only (MP3)", the app will:
-- Download the best available audio
-- Convert to MP3 format
-- Embed the video thumbnail as album art
-- Add metadata (title, artist, etc.)
+### Advanced Features
+- **Test URL**: Verify the URL is valid before downloading
+- **Test Network**: Check internet connectivity
+- **Stop/Resume**: Control download progress
+- **Playlist Selection**: Choose specific videos from playlists
 
-## Troubleshooting
+### Network Error Handling
+- **Automatic Retry**: Downloads automatically retry on network errors
+- **Manual Retry**: Use the "Resume Download" button after stopping
+- **Error Logs**: Check `error_log.txt` for detailed error information
 
-**"yt-dlp is not installed"**
-```bash
-pip install yt-dlp
+## 🔧 Troubleshooting
+
+### Common Issues
+
+#### "FFmpeg not found" Error
+- **Solution**: Install FFmpeg and add it to your system PATH
+- **Windows**: Download from https://ffmpeg.org/download.html
+- **macOS**: `brew install ffmpeg`
+- **Linux**: `sudo apt install ffmpeg`
+
+#### Network Connection Errors
+- **Check Internet**: Use the "Test Network" button
+- **Retry Automatically**: The app will retry failed downloads
+- **Manual Resume**: Stop and resume downloads if needed
+
+#### Download Failures
+- **Check Error Log**: Review `error_log.txt` for details
+- **Verify URL**: Ensure the YouTube URL is valid and accessible
+- **Try Different Quality**: Some videos may not be available in all qualities
+
+### Error Logs
+The application creates detailed error logs in `error_log.txt` for troubleshooting:
+- Network connectivity issues
+- Download failures
+- Processing errors
+- Dependency problems
+
+## 🏗️ Development
+
+### Project Structure
+```
+YouDownload/
+├── youtube_downloader_gui.py    # Main application
+├── requirements.txt             # Python dependencies
+├── build_exe.py                # Executable builder
+├── install.py                  # Installation script
+├── test_downloader.py          # Test script
+└── README.md                   # This file
 ```
 
-**"FFmpeg is not installed"**
-- Follow the FFmpeg installation steps above
-- Restart your terminal/command prompt after adding to PATH
+### Building from Source
+1. **Clone repository**:
+   ```bash
+   git clone <repository-url>
+   cd YouDownload
+   ```
+2. **Install dependencies**:
+   ```bash
+   pip install -r requirements.txt
+   ```
+3. **Run tests**:
+   ```bash
+   python test_downloader.py
+   ```
+4. **Build executable**:
+   ```bash
+   python build_exe.py
+   ```
 
-**Download fails**
-- Check your internet connection
-- Ensure the YouTube URL is valid
-- Try a different video (some may have restrictions)
+### Contributing
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Test thoroughly
+5. Submit a pull request
 
-**Executable issues**
-- Make sure all icon files are present
-- Run `python build_exe.py` to rebuild
-- Check that PyInstaller is installed: `pip install pyinstaller`
+## 📄 License
 
-## Requirements
+This project is open source and available under the MIT License.
 
-- Python 3.7+
-- yt-dlp
-- Pillow (PIL)
-- requests
-- FFmpeg
+## 🤝 Support
 
-## License
+For issues, questions, or contributions:
+1. Check the troubleshooting section
+2. Review error logs
+3. Create an issue with detailed information
+4. Include system information and error messages
 
-This project is open source. Feel free to use and modify as needed. 
+## 🔄 Version History
+
+### v2.1 (Current)
+- ✅ Added stop/resume functionality
+- ✅ Enhanced network error handling
+- ✅ Automatic retry mechanisms
+- ✅ Network connectivity testing
+- ✅ Download speed display
+- ✅ Improved error reporting
+- ✅ Partial download resume support
+
+### v2.0
+- ✅ Playlist support with video selection
+- ✅ Thumbnail display
+- ✅ Audio downloads with album art
+- ✅ Modern GUI design
+- ✅ Progress tracking
+
+### v1.0
+- ✅ Basic video downloading
+- ✅ Quality selection
+- ✅ Simple GUI interface 

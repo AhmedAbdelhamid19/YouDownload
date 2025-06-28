@@ -5,7 +5,7 @@ a = Analysis(
     ['YouDownload\\youtube_downloader_gui.py'],
     pathex=[],
     binaries=[],
-    datas=[('YouDownload/youtube_downloader_logo.png', 'YouDownload'), ('youtube_downloader_logo.ico', '.')],
+    datas=[('youtube_downloader_logo.png', 'YouDownload'), ('youtube_downloader_logo.ico', '.'), ('icons', 'icons')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

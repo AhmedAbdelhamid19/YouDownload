@@ -9,16 +9,29 @@ import shutil
 from PIL import Image, ImageTk
 import requests
 from io import BytesIO
+import time
+import signal
+import socket
 
-APP_VERSION = "v2.0"  # Update as needed
+APP_VERSION = "v2.1"  # Update as needed
 
 class YouTubeDownloaderGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("YouTube Video Downloader")
-        self.root.geometry("900x750")
+        self.root.geometry("900x800")
         self.root.resizable(True, True)
         self.root.configure(bg="#f7fafd")
+        
+        # Download control variables
+        self.download_thread = None
+        self.ydl_instance = None
+        self.is_downloading = False
+        self.is_paused = False
+        self.download_cancelled = False
+        self.retry_count = 0
+        self.max_retries = 3
+        self.retry_delay = 5  # seconds
         
         # Configure style
         style = ttk.Style()
@@ -28,6 +41,27 @@ class YouTubeDownloaderGUI:
         style.configure("TButton", font=("Segoe UI", 11), padding=6)
         style.configure("Accent.TButton", background="#1976d2", foreground="white", font=("Segoe UI", 11, "bold"), padding=8)
         style.map("Accent.TButton", background=[("active", "#1565c0")])
+        
+        # Stop button style - using more compatible colors
+        style.configure("Stop.TButton", 
+                       background="#dc3545", 
+                       foreground="white", 
+                       font=("Segoe UI", 11, "bold"), 
+                       padding=8)
+        style.map("Stop.TButton", 
+                 background=[("active", "#c82333"), ("disabled", "#6c757d")],
+                 foreground=[("disabled", "#ffffff")])
+        
+        # Resume button style - using more compatible colors
+        style.configure("Resume.TButton", 
+                       background="#28a745", 
+                       foreground="white", 
+                       font=("Segoe UI", 11, "bold"), 
+                       padding=8)
+        style.map("Resume.TButton", 
+                 background=[("active", "#218838"), ("disabled", "#6c757d")],
+                 foreground=[("disabled", "#ffffff")])
+        
         style.configure("TEntry", font=("Segoe UI", 11))
         style.configure("TCombobox", font=("Segoe UI", 11))
         style.configure("TLabelframe", background="#f7fafd", font=("Segoe UI", 11, "bold"))
@@ -60,6 +94,7 @@ class YouTubeDownloaderGUI:
         
         self.setup_ui()
         self.check_dependencies()
+        self.check_network_connectivity()
         
     def check_dependencies(self):
         """Check for yt-dlp and ffmpeg, disable download if missing."""
@@ -210,14 +245,82 @@ class YouTubeDownloaderGUI:
         self.status_label = ttk.Label(progress_frame, textvariable=self.status_text, background="#f7fafd")
         self.status_label.grid(row=1, column=0, sticky=tk.W)
         
-        # Download Button
-        self.download_btn = ttk.Button(main_frame, text="Download Video", 
-                                      command=self.start_download, style="Accent.TButton")
-        self.download_btn.grid(row=8, column=0, columnspan=3, pady=(10, 0), ipadx=10, ipady=4)
+        # Control Buttons Section
+        control_frame = ttk.Frame(main_frame)
+        control_frame.grid(row=8, column=0, columnspan=3, pady=(0, 15))
         
-        # Version label at the bottom
-        version_label = ttk.Label(main_frame, text=f"Version: {APP_VERSION}", font=("Segoe UI", 9, "italic"), background="#f7fafd", foreground="#888")
-        version_label.grid(row=9, column=0, columnspan=3, pady=(30, 0), sticky=tk.E)
+        # Try to load button icons
+        self.button_icons = {}
+        try:
+            # Check if icons directory exists (for development)
+            icons_dir = os.path.join(os.path.dirname(__file__), "../icons")
+            if not os.path.exists(icons_dir):
+                # Check if icons are in the same directory as the script (for executable)
+                icons_dir = os.path.join(os.path.dirname(__file__), "icons")
+            
+            if os.path.exists(icons_dir):
+                from PIL import Image, ImageTk
+                
+                # Load icons
+                icon_files = {
+                    'stop': 'stop_icon.png',
+                    'resume': 'resume_icon.png', 
+                    'network': 'network_icon.png',
+                    'download': 'download_icon.png'
+                }
+                
+                for icon_name, filename in icon_files.items():
+                    icon_path = os.path.join(icons_dir, filename)
+                    if os.path.exists(icon_path):
+                        try:
+                            img = Image.open(icon_path)
+                            img = img.resize((16, 16), Image.Resampling.LANCZOS)
+                            self.button_icons[icon_name] = ImageTk.PhotoImage(img)
+                        except Exception as e:
+                            print(f"Failed to load icon {filename}: {e}")
+        except Exception as e:
+            print(f"Icon loading failed: {e}")
+        
+        # Download button
+        download_text = "Start Download"
+        if 'download' in self.button_icons:
+            self.download_btn = ttk.Button(control_frame, text=download_text, image=self.button_icons['download'], 
+                                          compound='left', command=self.start_download, style="Accent.TButton")
+        else:
+            self.download_btn = ttk.Button(control_frame, text=f"▶ {download_text}", command=self.start_download, style="Accent.TButton")
+        self.download_btn.pack(side=tk.LEFT, padx=(0, 10))
+        
+        # Stop button (initially disabled)
+        stop_text = "Stop Download"
+        if 'stop' in self.button_icons:
+            self.stop_btn = ttk.Button(control_frame, text=stop_text, image=self.button_icons['stop'], 
+                                      compound='left', command=self.stop_download, style="Stop.TButton", state="disabled")
+        else:
+            self.stop_btn = ttk.Button(control_frame, text=f"⏹ {stop_text}", command=self.stop_download, style="Stop.TButton", state="disabled")
+        self.stop_btn.pack(side=tk.LEFT, padx=(0, 10))
+        
+        # Resume button (initially disabled)
+        resume_text = "Resume Download"
+        if 'resume' in self.button_icons:
+            self.resume_btn = ttk.Button(control_frame, text=resume_text, image=self.button_icons['resume'], 
+                                        compound='left', command=self.resume_download, style="Resume.TButton", state="disabled")
+        else:
+            self.resume_btn = ttk.Button(control_frame, text=f"⏯ {resume_text}", command=self.resume_download, style="Resume.TButton", state="disabled")
+        self.resume_btn.pack(side=tk.LEFT, padx=(0, 10))
+        
+        # Network test button
+        network_text = "Test Network"
+        if 'network' in self.button_icons:
+            self.network_btn = ttk.Button(control_frame, text=network_text, image=self.button_icons['network'], 
+                                         compound='left', command=self.test_network_connection)
+        else:
+            self.network_btn = ttk.Button(control_frame, text=f"🌐 {network_text}", command=self.test_network_connection)
+        self.network_btn.pack(side=tk.LEFT, padx=(0, 10))
+        
+        # Version label
+        version_label = ttk.Label(main_frame, text=f"Version {APP_VERSION}", font=("Segoe UI", 9), 
+                                 background="#f7fafd", foreground="#888")
+        version_label.grid(row=9, column=0, columnspan=3, pady=(10, 0), sticky=tk.W)
         
         # Set default download path
         self.download_path.set(os.path.expanduser("~/Downloads"))
@@ -412,72 +515,237 @@ class YouTubeDownloaderGUI:
                 messagebox.showerror("Error", "Please select at least one video to download")
                 return
         
-        # Disable download button
+        # Reset download state
+        self.is_downloading = True
+        self.is_paused = False
+        self.download_cancelled = False
+        self.retry_count = 0
+        
+        # Update UI
         self.download_btn.config(state="disabled")
+        self.stop_btn.config(state="normal")
+        self.resume_btn.config(state="disabled")
         self.status_text.set("Starting download...")
         self.download_progress.set(0)
         self.overall_progress.set(0)
         
         # Run download in separate thread
-        thread = threading.Thread(target=self.download_video, args=(url, download_path, quality))
-        thread.daemon = True
-        thread.start()
+        self.download_thread = threading.Thread(target=self.download_video, args=(url, download_path, quality))
+        self.download_thread.daemon = True
+        self.download_thread.start()
+        
+    def stop_download(self):
+        """Stop the current download"""
+        if self.is_downloading:
+            self.download_cancelled = True
+            self.is_downloading = False
+            self.is_paused = True
+            
+            # Signal yt-dlp to stop
+            if self.ydl_instance:
+                try:
+                    self.ydl_instance.abort = True
+                except:
+                    pass
+            
+            self.status_text.set("Download stopped by user")
+            self.overall_status.set("Download stopped")
+            
+            # Update UI
+            self.download_btn.config(state="normal")
+            self.stop_btn.config(state="disabled")
+            self.resume_btn.config(state="normal")
+    
+    def resume_download(self):
+        """Resume the current download"""
+        if self.is_paused and not self.is_downloading:
+            self.is_downloading = True
+            self.is_paused = False
+            self.download_cancelled = False
+            
+            # Update UI
+            self.download_btn.config(state="disabled")
+            self.stop_btn.config(state="normal")
+            self.resume_btn.config(state="disabled")
+            self.status_text.set("Resuming download...")
+            
+            # Restart download thread
+            url = self.youtube_url.get().strip()
+            download_path = self.download_path.get().strip()
+            quality = self.selected_quality.get()
+            
+            self.download_thread = threading.Thread(target=self.download_video, args=(url, download_path, quality))
+            self.download_thread.daemon = True
+            self.download_thread.start()
         
     def download_video(self, url, download_path, quality):
-        """Download the video(s) in a separate thread"""
+        """Download the video(s) in a separate thread with error handling and retry logic"""
         try:
             if self.is_playlist:
-                self.download_playlist(url, download_path, quality)
+                self.download_playlist_with_retry(url, download_path, quality)
             else:
-                self.download_single_video(url, download_path, quality)
+                self.download_single_video_with_retry(url, download_path, quality)
                 
         except Exception as e:
             tb = traceback.format_exc()
-            self.root.after(0, lambda: self.show_error(f"Download failed: {str(e)}\n\n{tb}"))
+            error_msg = f"Download failed: {str(e)}"
+            if "Connection" in str(e) or "timeout" in str(e).lower():
+                error_msg += "\n\nNetwork error detected. Please check your internet connection and try again."
+            self.root.after(0, lambda: self.show_error(f"{error_msg}\n\n{tb}"))
         finally:
-            self.root.after(0, lambda: self.download_btn.config(state="normal"))
+            self.root.after(0, self.download_finished)
     
-    def download_single_video(self, url, download_path, quality):
-        """Download a single video"""
-        ydl_opts = self.get_ydl_options(download_path, quality)
-        
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
-            
-        self.root.after(0, self.download_completed)
+    def download_single_video_with_retry(self, url, download_path, quality):
+        """Download a single video with retry logic for network errors"""
+        while self.retry_count < self.max_retries and not self.download_cancelled:
+            try:
+                ydl_opts = self.get_ydl_options(download_path, quality)
+                
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    self.ydl_instance = ydl
+                    ydl.download([url])
+                    break  # Success, exit retry loop
+                    
+            except Exception as e:
+                self.retry_count += 1
+                error_msg = str(e).lower()
+                
+                # Check if it's a network-related error
+                if any(keyword in error_msg for keyword in ['connection', 'timeout', 'network', 'unreachable', 'refused', 'reset', 'broken pipe']):
+                    if self.retry_count < self.max_retries and not self.download_cancelled:
+                        retry_msg = f"Network error. Retrying in {self.retry_delay} seconds... (Attempt {self.retry_count}/{self.max_retries})"
+                        self.root.after(0, lambda: self.status_text.set(retry_msg))
+                        self.root.after(0, lambda: self.overall_status.set(f"Network error detected. Retrying... ({self.retry_count}/{self.max_retries})"))
+                        
+                        # Wait before retry
+                        time.sleep(self.retry_delay)
+                        continue
+                    else:
+                        raise Exception(f"Network error after {self.max_retries} retries. Please check your internet connection and try again.")
+                else:
+                    # Non-network error, don't retry
+                    raise e
     
-    def download_playlist(self, url, download_path, quality):
-        """Download selected videos from playlist"""
+    def download_playlist_with_retry(self, url, download_path, quality):
+        """Download selected videos from playlist with retry logic"""
         total_videos = len(self.selected_videos)
         downloaded_videos = 0
+        failed_videos = []
         
         for i, video in enumerate(self.selected_videos):
+            if self.download_cancelled:
+                break
+                
             # Update overall progress
             overall_percent = (i / total_videos) * 100
             self.root.after(0, lambda p=overall_percent: self.overall_progress.set(p))
             self.root.after(0, lambda v=video: self.overall_status.set(f"Downloading: {v['title'][:50]}... ({i+1}/{total_videos})"))
             
-            # Download individual video
+            # Download individual video with retry
             video_url = f"https://www.youtube.com/watch?v={video['id']}"
-            ydl_opts = self.get_ydl_options(download_path, quality)
+            self.retry_count = 0  # Reset retry count for each video
             
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([video_url])
+            video_success = False
+            while self.retry_count < self.max_retries and not self.download_cancelled:
+                try:
+                    ydl_opts = self.get_ydl_options(download_path, quality)
+                    
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        self.ydl_instance = ydl
+                        ydl.download([video_url])
+                        downloaded_videos += 1
+                        video_success = True
+                        break  # Success, move to next video
+                        
+                except Exception as e:
+                    self.retry_count += 1
+                    error_msg = str(e).lower()
+                    
+                    # Check if it's a network-related error
+                    if any(keyword in error_msg for keyword in ['connection', 'timeout', 'network', 'unreachable', 'refused', 'reset', 'broken pipe']):
+                        if self.retry_count < self.max_retries and not self.download_cancelled:
+                            retry_msg = f"Network error downloading {video['title'][:30]}... Retrying in {self.retry_delay} seconds... (Attempt {self.retry_count}/{self.max_retries})"
+                            self.root.after(0, lambda: self.status_text.set(retry_msg))
+                            time.sleep(self.retry_delay)
+                            continue
+                        else:
+                            failed_msg = f"Failed to download {video['title']} after {self.max_retries} retries due to network issues."
+                            self.root.after(0, lambda: self.show_error(failed_msg, log_only=True))
+                            failed_videos.append(video['title'])
+                            break
+                    else:
+                        # Non-network error, don't retry
+                        failed_msg = f"Failed to download {video['title']}: {str(e)}"
+                        self.root.after(0, lambda: self.show_error(failed_msg, log_only=True))
+                        failed_videos.append(video['title'])
+                        break
             
-            downloaded_videos += 1
+            # If video failed and we're not cancelled, continue with next video
+            if not video_success and not self.download_cancelled:
+                continue
         
         # Complete overall progress
-        self.root.after(0, lambda: self.overall_progress.set(100))
-        self.root.after(0, lambda: self.overall_status.set(f"Downloaded {downloaded_videos} videos successfully!"))
-        self.root.after(0, self.download_completed)
+        if not self.download_cancelled:
+            self.root.after(0, lambda: self.overall_progress.set(100))
+            
+            # Show final status
+            if failed_videos:
+                status_msg = f"Downloaded {downloaded_videos}/{total_videos} videos. {len(failed_videos)} failed."
+                self.root.after(0, lambda: self.overall_status.set(status_msg))
+                
+                # Show detailed failure report
+                if len(failed_videos) > 0:
+                    failed_list = "\n".join([f"• {title}" for title in failed_videos[:5]])  # Show first 5
+                    if len(failed_videos) > 5:
+                        failed_list += f"\n• ... and {len(failed_videos) - 5} more"
+                    
+                    messagebox.showwarning(
+                        "Download Complete", 
+                        f"Download completed with some failures:\n\n"
+                        f"✅ Successfully downloaded: {downloaded_videos} videos\n"
+                        f"❌ Failed to download: {len(failed_videos)} videos\n\n"
+                        f"Failed videos:\n{failed_list}\n\n"
+                        f"Check the error log for details."
+                    )
+            else:
+                self.root.after(0, lambda: self.overall_status.set(f"All {downloaded_videos} videos downloaded successfully!"))
+    
+    def download_finished(self):
+        """Called when download is finished (success or failure)"""
+        self.is_downloading = False
+        self.ydl_instance = None
+        
+        # Update UI
+        self.download_btn.config(state="normal")
+        self.stop_btn.config(state="disabled")
+        self.resume_btn.config(state="disabled")
+        
+        if not self.download_cancelled:
+            self.download_progress.set(100)
+            if self.is_playlist:
+                self.status_text.set("All selected videos downloaded successfully!")
+            else:
+                self.status_text.set("Download completed successfully!")
+            messagebox.showinfo("Success", "Download completed successfully!")
+        else:
+            self.status_text.set("Download was cancelled")
     
     def get_ydl_options(self, download_path, quality):
-        """Get yt-dlp options based on quality selection"""
+        """Get yt-dlp options based on quality selection with resume support"""
         ydl_opts = {
             'outtmpl': os.path.join(download_path, '%(title)s.%(ext)s'),
             'progress_hooks': [self.progress_hook],
             'noplaylist': True,
             'concurrent_fragment_downloads': 4,
+            'retries': 3,  # yt-dlp internal retries
+            'fragment_retries': 3,
+            'file_access_retries': 3,
+            'extractor_retries': 3,
+            'socket_timeout': 30,  # 30 seconds timeout
+            'http_chunk_size': 10485760,  # 10MB chunks for better resume support
+            'continue_dl': True,  # Continue partial downloads
+            'ignoreerrors': False,  # Don't ignore errors, handle them properly
+            'no_warnings': False,  # Show warnings for debugging
         }
         
         if quality == "Audio Only (MP3)":
@@ -516,7 +784,10 @@ class YouTubeDownloaderGUI:
         return ydl_opts
             
     def progress_hook(self, d):
-        """Progress hook for yt-dlp"""
+        """Progress hook for yt-dlp with enhanced error handling"""
+        if self.download_cancelled:
+            return
+            
         if d['status'] == 'downloading':
             # Update progress bar
             percent = 0
@@ -532,31 +803,25 @@ class YouTubeDownloaderGUI:
                 if 'downloaded_bytes' in d:
                     mb_downloaded = d['downloaded_bytes'] / (1024 * 1024)
             
-            # Update status
-            status = f"Downloading: {percent:.1f}% ({mb_downloaded:.2f} MB / {mb_total:.2f} MB)"
+            # Update status with speed information
+            speed = d.get('speed', 0)
+            if speed:
+                speed_mb = speed / (1024 * 1024)
+                status = f"Downloading: {percent:.1f}% ({mb_downloaded:.2f} MB / {mb_total:.2f} MB) - {speed_mb:.2f} MB/s"
+            else:
+                status = f"Downloading: {percent:.1f}% ({mb_downloaded:.2f} MB / {mb_total:.2f} MB)"
+            
             self.root.after(0, lambda: self.status_text.set(status))
             
         elif d['status'] == 'finished':
             self.root.after(0, lambda: self.status_text.set("Processing video..."))
             
-    def download_completed(self):
-        """Called when download is completed"""
-        self.download_progress.set(100)
-        if self.is_playlist:
-            self.status_text.set("All selected videos downloaded successfully!")
-        else:
-            self.status_text.set("Download completed successfully!")
-        messagebox.showinfo("Success", "Download completed successfully!")
-        
-    def show_error(self, message, log_only=False):
-        """Show error message"""
-        self.status_text.set("Error occurred")
-        # Log error to file
-        with open("error_log.txt", "a", encoding="utf-8") as f:
-            f.write(message + "\n" + ("-"*60) + "\n")
-        # Show in info box
-        if not log_only:
-            messagebox.showerror("Error", message)
+        elif d['status'] == 'error':
+            error_msg = d.get('error', 'Unknown error')
+            self.root.after(0, lambda: self.status_text.set(f"Error: {error_msg}"))
+            
+        elif d['status'] == 'resuming':
+            self.root.after(0, lambda: self.status_text.set("Resuming download..."))
 
     def load_single_thumbnail(self, idx):
         """Load thumbnail for a single video by index"""
@@ -580,6 +845,96 @@ class YouTubeDownloaderGUI:
             video['thumbnail_loaded'] = True
         except Exception as e:
             print(f"Failed to load thumbnail for {video['title']}: {e}")
+
+    def show_error(self, message, log_only=False):
+        """Show error message"""
+        self.status_text.set("Error occurred")
+        # Log error to file
+        with open("error_log.txt", "a", encoding="utf-8") as f:
+            f.write(message + "\n" + ("-"*60) + "\n")
+        # Show in info box
+        if not log_only:
+            messagebox.showerror("Error", message)
+
+    def check_network_connectivity(self):
+        """Check if internet connection is available"""
+        def check_connection():
+            try:
+                # Try to connect to Google's DNS server
+                socket.create_connection(("8.8.8.8", 53), timeout=3)
+                return True
+            except OSError:
+                return False
+        
+        # Run in background thread to avoid blocking UI
+        def check_async():
+            if not check_connection():
+                self.root.after(0, lambda: self.show_network_warning())
+        
+        thread = threading.Thread(target=check_async)
+        thread.daemon = True
+        thread.start()
+    
+    def show_network_warning(self):
+        """Show warning if no internet connection detected"""
+        self.status_text.set("No internet connection detected")
+        self.overall_status.set("Please check your internet connection")
+        
+        # Show warning dialog
+        result = messagebox.askyesno(
+            "Network Warning", 
+            "No internet connection detected. Do you want to continue anyway?\n\n"
+            "Downloads will fail if there's no internet connection."
+        )
+        
+        if not result:
+            self.download_btn.config(state="disabled")
+        else:
+            self.download_btn.config(state="normal")
+    
+    def test_network_connection(self):
+        """Test network connection and show result"""
+        def test_connection():
+            try:
+                # Test multiple endpoints
+                endpoints = [
+                    ("8.8.8.8", 53),  # Google DNS
+                    ("1.1.1.1", 53),  # Cloudflare DNS
+                    ("www.google.com", 80),  # Google
+                    ("www.youtube.com", 80)  # YouTube
+                ]
+                
+                for host, port in endpoints:
+                    try:
+                        socket.create_connection((host, port), timeout=5)
+                        return True, f"Connected to {host}"
+                    except:
+                        continue
+                
+                return False, "No internet connection"
+                
+            except Exception as e:
+                return False, f"Connection test failed: {str(e)}"
+        
+        # Show testing message
+        self.status_text.set("Testing network connection...")
+        
+        def test_async():
+            success, message = test_connection()
+            self.root.after(0, lambda: self.show_connection_result(success, message))
+        
+        thread = threading.Thread(target=test_async)
+        thread.daemon = True
+        thread.start()
+    
+    def show_connection_result(self, success, message):
+        """Show the result of network connection test"""
+        if success:
+            self.status_text.set("Network connection OK")
+            messagebox.showinfo("Network Test", f"✅ {message}\n\nYour internet connection is working properly.")
+        else:
+            self.status_text.set("Network connection failed")
+            messagebox.showerror("Network Test", f"❌ {message}\n\nPlease check your internet connection and try again.")
 
 def main():
     root = tk.Tk()

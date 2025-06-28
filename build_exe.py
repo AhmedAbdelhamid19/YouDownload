@@ -21,8 +21,9 @@ def build_exe():
         "--windowed",
         "--icon=youtube_downloader_logo.ico",
         "--name=YouDownload",
-        "--add-data=YouDownload/youtube_downloader_logo.png;YouDownload",
+        "--add-data=youtube_downloader_logo.png;YouDownload",
         "--add-data=youtube_downloader_logo.ico;.",
+        "--add-data=icons;icons",
         "YouDownload/youtube_downloader_gui.py"
     ]
     
@@ -44,6 +45,7 @@ def build_exe():
         "--add-data=YouDownload;YouDownload",
         "--add-data=youtube_downloader_logo.ico;.",
         "--add-data=youtube_downloader_logo.png;.",
+        "--add-data=icons;icons",
         "install.py"
     ]
     
@@ -58,6 +60,11 @@ def build_exe():
     print("Files created:")
     print("- dist/YouDownload.exe")
     print("- dist/YouDownload-Installer.exe")
+    print("\nIcons included:")
+    print("- Stop button icon (red square)")
+    print("- Resume button icon (green play)")
+    print("- Network test icon (globe)")
+    print("- Download button icon (blue arrow)")
     
     return True
 
