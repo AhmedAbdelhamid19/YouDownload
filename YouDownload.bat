@@ -1,29 +1,17 @@
 @echo off
 title YouDownload - YouTube Video Downloader
-echo.
-echo ========================================
-echo    YouDownload - YouTube Downloader
-echo ========================================
-echo.
-echo Starting application...
+echo Starting YouDownload...
 echo.
 
-REM Check if Python is installed
-python --version >nul 2>&1
-if errorlevel 1 (
-    echo ERROR: Python is not installed or not in PATH
-    echo Please install Python from https://python.org
+cd /d "%~dp0"
+cd YouDownload
+
+if exist "dist\YouDownload.exe" (
+    echo Launching YouDownload...
+    start "" "dist\YouDownload.exe"
+) else (
+    echo YouDownload.exe not found in dist folder.
+    echo Please run the installer first: run_installer.bat
     echo.
-    pause
-    exit /b 1
-)
-
-REM Run the launcher
-python launcher.py
-
-REM If there was an error, pause so user can see the message
-if errorlevel 1 (
-    echo.
-    echo Application exited with an error.
     pause
 ) 
