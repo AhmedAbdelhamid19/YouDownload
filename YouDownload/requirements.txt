@@ -1,3 +1,6 @@
 pytube
 yt-dlp
-ffmpeg-python 
+ffmpeg-python
+sv-ttk
+Pillow
+requests 

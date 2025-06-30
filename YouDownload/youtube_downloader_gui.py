@@ -12,8 +12,13 @@ from io import BytesIO
 import time
 import signal
 import socket
+import sv_ttk
+import json
 
 APP_VERSION = "v2.1"  # Update as needed
+
+class DownloadCancelled(Exception):
+    pass
 
 class YouTubeDownloaderGUI:
     def __init__(self, root):
@@ -21,7 +26,6 @@ class YouTubeDownloaderGUI:
         self.root.title("YouTube Video Downloader")
         self.root.geometry("900x800")
         self.root.resizable(True, True)
-        self.root.configure(bg="#f7fafd")
         
         # Download control variables
         self.download_thread = None
@@ -32,41 +36,23 @@ class YouTubeDownloaderGUI:
         self.retry_count = 0
         self.max_retries = 3
         self.retry_delay = 5  # seconds
+        self.theme_is_dark = False
+        self.last_downloaded_file = None
+        
+        # Set initial theme
+        sv_ttk.set_theme("light")
         
         # Configure style
         style = ttk.Style()
-        style.theme_use('clam')
-        style.configure("TFrame", background="#f7fafd")
-        style.configure("TLabel", background="#f7fafd", font=("Segoe UI", 11))
+        
+        style.configure("TLabel", font=("Segoe UI", 11))
         style.configure("TButton", font=("Segoe UI", 11), padding=6)
-        style.configure("Accent.TButton", background="#1976d2", foreground="white", font=("Segoe UI", 11, "bold"), padding=8)
-        style.map("Accent.TButton", background=[("active", "#1565c0")])
-        
-        # Stop button style - using more compatible colors
-        style.configure("Stop.TButton", 
-                       background="#dc3545", 
-                       foreground="white", 
-                       font=("Segoe UI", 11, "bold"), 
-                       padding=8)
-        style.map("Stop.TButton", 
-                 background=[("active", "#c82333"), ("disabled", "#6c757d")],
-                 foreground=[("disabled", "#ffffff")])
-        
-        # Resume button style - using more compatible colors
-        style.configure("Resume.TButton", 
-                       background="#28a745", 
-                       foreground="white", 
-                       font=("Segoe UI", 11, "bold"), 
-                       padding=8)
-        style.map("Resume.TButton", 
-                 background=[("active", "#218838"), ("disabled", "#6c757d")],
-                 foreground=[("disabled", "#ffffff")])
-        
+        style.configure("Accent.TButton", font=("Segoe UI", 11, "bold"), padding=8)
         style.configure("TEntry", font=("Segoe UI", 11))
         style.configure("TCombobox", font=("Segoe UI", 11))
-        style.configure("TLabelframe", background="#f7fafd", font=("Segoe UI", 11, "bold"))
-        style.configure("TLabelframe.Label", font=("Segoe UI", 11, "bold"), foreground="#1976d2")
-        style.configure("TCheckbutton", background="#f7fafd", font=("Segoe UI", 10))
+        style.configure("TLabelframe", font=("Segoe UI", 11, "bold"))
+        style.configure("TLabelframe.Label", font=("Segoe UI", 11, "bold"))
+        style.configure("TCheckbutton", font=("Segoe UI", 10))
         
         # Variables
         self.download_path = tk.StringVar()
@@ -81,6 +67,7 @@ class YouTubeDownloaderGUI:
         self.playlist_videos = []
         self.selected_videos = []
         self.is_playlist = False
+        self.video_checkboxes = []
         
         # Available qualities
         self.qualities = [
@@ -95,6 +82,7 @@ class YouTubeDownloaderGUI:
         self.setup_ui()
         self.check_dependencies()
         self.check_network_connectivity()
+        self.load_last_location()
         
     def check_dependencies(self):
         """Check for yt-dlp and ffmpeg, disable download if missing."""
@@ -112,12 +100,23 @@ class YouTubeDownloaderGUI:
             self.status_text.set("Dependency error!")
             self.show_error("\n".join(errors), log_only=True)
         else:
-            self.download_btn.config(state="normal")
+            if hasattr(self, 'download_btn'):
+                self.download_btn.config(state="normal")
         
     def setup_ui(self):
-        # Main frame with scrollbar
-        main_canvas = tk.Canvas(self.root, bg="#f7fafd", highlightthickness=0)
-        scrollbar = ttk.Scrollbar(self.root, orient="vertical", command=main_canvas.yview)
+        # Allow the main window grid to expand
+        self.root.columnconfigure(0, weight=1)
+        self.root.rowconfigure(0, weight=1)
+
+        # Main frame with a max width for content
+        container = ttk.Frame(self.root)
+        container.grid(row=0, column=0, sticky="nsew")
+        container.columnconfigure(0, weight=1)
+        container.rowconfigure(0, weight=1)
+
+        # Main canvas with scrollbar
+        main_canvas = tk.Canvas(container, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(container, orient="vertical", command=main_canvas.yview)
         scrollable_frame = ttk.Frame(main_canvas)
 
         scrollable_frame.bind(
@@ -125,18 +124,39 @@ class YouTubeDownloaderGUI:
             lambda e: main_canvas.configure(scrollregion=main_canvas.bbox("all"))
         )
 
-        main_canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        scrollable_frame_window = main_canvas.create_window((0, 0), window=scrollable_frame, anchor="n")
         main_canvas.configure(yscrollcommand=scrollbar.set)
+        
+        def on_canvas_configure(event):
+            canvas_width = event.width
+            main_canvas.itemconfig(scrollable_frame_window, width=canvas_width)
+
+        main_canvas.bind("<Configure>", on_canvas_configure)
+
+        def smooth_scroll(canvas, event):
+            if event.delta > 0:
+                canvas.yview_scroll(-1, "units")
+            else:
+                canvas.yview_scroll(1, "units")
+
+        main_canvas.bind_all("<MouseWheel>", lambda event: smooth_scroll(main_canvas, event))
 
         # Pack scrollbar and canvas
         scrollbar.pack(side="right", fill="y")
         main_canvas.pack(side="left", fill="both", expand=True)
 
-        # Main frame
+        # Main content frame, this is what gets centered
         main_frame = ttk.Frame(scrollable_frame, padding="24 18 24 18")
-        main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        main_frame.grid(row=0, column=0, sticky="ew")
+        scrollable_frame.columnconfigure(0, weight=1)
+
         main_frame.columnconfigure(1, weight=1)
         
+        # --- Header Section ---
+        header_frame = ttk.Frame(main_frame)
+        header_frame.grid(row=0, column=0, columnspan=3, sticky="ew", pady=(0, 20))
+        header_frame.columnconfigure(1, weight=1)
+
         # Logo at the top
         logo_path = os.path.join(os.path.dirname(__file__), "../youtube_downloader_logo.png")
         if os.path.exists(logo_path):
@@ -144,19 +164,23 @@ class YouTubeDownloaderGUI:
                 logo_img = Image.open(logo_path)
                 logo_img = logo_img.resize((64, 64), Image.Resampling.LANCZOS)
                 self.logo_photo = ImageTk.PhotoImage(logo_img)
-                logo_label = ttk.Label(main_frame, image=self.logo_photo, background="#f7fafd")
-                logo_label.grid(row=0, column=0, pady=(0, 10), sticky=tk.W)
+                logo_label = ttk.Label(header_frame, image=self.logo_photo)
+                logo_label.grid(row=0, column=0, rowspan=2, sticky=tk.W, padx=(0, 15))
             except Exception:
                 pass
 
         # Title
-        title_label = ttk.Label(main_frame, text="YouDownload", font=("Segoe UI", 22, "bold"), foreground="#1976d2", background="#f7fafd")
-        title_label.grid(row=0, column=1, columnspan=2, pady=(0, 10), sticky=tk.W)
+        title_label = ttk.Label(header_frame, text="YouDownload", font=("Segoe UI", 22, "bold"))
+        title_label.grid(row=0, column=1, sticky=tk.W)
 
         # Subtitle
-        subtitle = ttk.Label(main_frame, text="Download YouTube videos and playlists easily", font=("Segoe UI", 12), background="#f7fafd", foreground="#555")
-        subtitle.grid(row=1, column=0, columnspan=3, sticky=tk.W, pady=(0, 18))
+        subtitle = ttk.Label(header_frame, text="Download YouTube videos and playlists easily", font=("Segoe UI", 12))
+        subtitle.grid(row=1, column=1, sticky=tk.W)
         
+        # Theme switcher
+        self.theme_switch = ttk.Checkbutton(header_frame, text="🌙 Dark Mode", style="Switch.TCheckbutton", command=self.toggle_theme)
+        self.theme_switch.grid(row=0, column=2, rowspan=2, sticky="e")
+
         # YouTube URL Section
         url_frame = ttk.Labelframe(main_frame, text="YouTube Video/Playlist URL", padding="14 10 14 10")
         url_frame.grid(row=2, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(0, 15))
@@ -182,6 +206,9 @@ class YouTubeDownloaderGUI:
         browse_btn = ttk.Button(location_frame, text="Browse", command=self.browse_location)
         browse_btn.grid(row=1, column=1, padx=(10, 0))
         
+        save_btn = ttk.Button(location_frame, text="Save", command=self.save_last_location)
+        save_btn.grid(row=1, column=2, padx=(10, 0))
+        
         # Quality Selection Section
         quality_frame = ttk.Labelframe(main_frame, text="Video Quality", padding="14 10 14 10")
         quality_frame.grid(row=4, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(0, 15))
@@ -199,7 +226,7 @@ class YouTubeDownloaderGUI:
         self.info_frame.columnconfigure(0, weight=1)
         
         # Create a frame for info with scrollbar
-        info_canvas = tk.Canvas(self.info_frame, height=220, bg="#f7fafd", highlightthickness=0)
+        info_canvas = tk.Canvas(self.info_frame, height=220, highlightthickness=0)
         info_scrollbar = ttk.Scrollbar(self.info_frame, orient="vertical", command=info_canvas.yview)
         self.info_scrollable_frame = ttk.Frame(info_canvas)
         
@@ -214,12 +241,39 @@ class YouTubeDownloaderGUI:
         info_canvas.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         info_scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
         
+        def on_mouse_wheel(event):
+            # Determine which canvas to scroll based on mouse position
+            widget = self.root.winfo_containing(event.x_root, event.y_root)
+            if widget is None:
+                return
+
+            # Walk up the widget hierarchy to see if it's inside info_canvas
+            parent = widget
+            while parent != self.root:
+                if parent == info_canvas:
+                    info_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+                    return
+                # Check if parent is None, to avoid infinite loop
+                if parent is None:
+                    break
+                parent = parent.master
+            
+            # Otherwise, scroll the main canvas
+            main_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        self.root.bind_all("<MouseWheel>", on_mouse_wheel)
+
         self.info_frame.rowconfigure(0, weight=1)
         self.info_frame.columnconfigure(0, weight=1)
         
+        # Playlist controls
+        self.playlist_controls_frame = ttk.Frame(self.info_frame)
+        self.playlist_controls_frame.grid(row=1, column=0, sticky="ew", pady=5)
+        self.playlist_controls_frame.grid_remove() # Hide by default
+        
         # Loading indicator
-        self.loading_label = ttk.Label(self.info_frame, text="", font=("Segoe UI", 10, "italic"), background="#f7fafd")
-        self.loading_label.grid(row=1, column=0, pady=(5, 0))
+        self.loading_label = ttk.Label(self.info_frame, text="", font=("Segoe UI", 10, "italic"))
+        self.loading_label.grid(row=2, column=0, pady=(5, 0))
         
         # Overall Progress Section
         overall_frame = ttk.Labelframe(main_frame, text="Overall Progress", padding="14 10 14 10")
@@ -230,7 +284,7 @@ class YouTubeDownloaderGUI:
                                                    maximum=100, length=400)
         self.overall_progress_bar.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=(0, 5))
         
-        self.overall_status_label = ttk.Label(overall_frame, textvariable=self.overall_status, background="#f7fafd")
+        self.overall_status_label = ttk.Label(overall_frame, textvariable=self.overall_status)
         self.overall_status_label.grid(row=1, column=0, sticky=tk.W)
         
         # Individual Progress Section
@@ -242,7 +296,7 @@ class YouTubeDownloaderGUI:
                                            maximum=100, length=400)
         self.progress_bar.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=(0, 5))
         
-        self.status_label = ttk.Label(progress_frame, textvariable=self.status_text, background="#f7fafd")
+        self.status_label = ttk.Label(progress_frame, textvariable=self.status_text)
         self.status_label.grid(row=1, column=0, sticky=tk.W)
         
         # Control Buttons Section
@@ -308,6 +362,10 @@ class YouTubeDownloaderGUI:
             self.resume_btn = ttk.Button(control_frame, text=f"⏯ {resume_text}", command=self.resume_download, style="Resume.TButton", state="disabled")
         self.resume_btn.pack(side=tk.LEFT, padx=(0, 10))
         
+        # Delete button
+        self.delete_btn = ttk.Button(control_frame, text="Delete File", command=self.delete_file, state="disabled")
+        self.delete_btn.pack(side=tk.LEFT, padx=(0, 10))
+        
         # Network test button
         network_text = "Test Network"
         if 'network' in self.button_icons:
@@ -318,18 +376,28 @@ class YouTubeDownloaderGUI:
         self.network_btn.pack(side=tk.LEFT, padx=(0, 10))
         
         # Version label
-        version_label = ttk.Label(main_frame, text=f"Version {APP_VERSION}", font=("Segoe UI", 9), 
-                                 background="#f7fafd", foreground="#888")
+        version_label = ttk.Label(main_frame, text=f"Version {APP_VERSION}", font=("Segoe UI", 9))
         version_label.grid(row=9, column=0, columnspan=3, pady=(10, 0), sticky=tk.W)
         
         # Set default download path
         self.download_path.set(os.path.expanduser("~/Downloads"))
         
+    def toggle_theme(self):
+        if self.theme_switch.instate(["selected"]):
+            sv_ttk.set_theme("dark")
+            self.theme_is_dark = True
+            self.theme_switch.config(text="☀️ Light Mode")
+        else:
+            sv_ttk.set_theme("light")
+            self.theme_is_dark = False
+            self.theme_switch.config(text="🌙 Dark Mode")
+
     def browse_location(self):
         """Open file dialog to select download location"""
         folder = filedialog.askdirectory(title="Select Download Folder")
         if folder:
             self.download_path.set(folder)
+            self.save_last_location(show_message=False)
             
     def test_url(self):
         """Test if the YouTube URL is valid and get video/playlist info"""
@@ -386,12 +454,12 @@ class YouTubeDownloaderGUI:
             
     def update_video_info(self, info):
         """Update the video/playlist information display"""
-        # Clear previous content
         for widget in self.info_scrollable_frame.winfo_children():
             widget.destroy()
         
         self.playlist_videos = []
         self.selected_videos = []
+        self.video_checkboxes = []
         
         if info.get('_type') == 'playlist':
             self.is_playlist = True
@@ -405,6 +473,17 @@ class YouTubeDownloaderGUI:
             info_label = ttk.Label(self.info_scrollable_frame, text=playlist_info, font=("Segoe UI", 10, "bold"))
             info_label.grid(row=0, column=0, columnspan=3, sticky=tk.W, pady=(0, 10))
             
+            self.playlist_controls_frame.grid() # Show controls
+            
+            select_all_btn = ttk.Button(self.playlist_controls_frame, text="Select All", command=self.select_all)
+            select_all_btn.pack(side="left", padx=(0, 5))
+            
+            deselect_all_btn = ttk.Button(self.playlist_controls_frame, text="Deselect All", command=self.deselect_all)
+            deselect_all_btn.pack(side="left")
+            
+            # Add a separator
+            ttk.Separator(self.playlist_controls_frame, orient="horizontal").pack(fill="x", pady=5, expand=True)
+            
             row = 1
             for i, entry in enumerate(info.get('entries', [])):
                 if entry:
@@ -413,31 +492,33 @@ class YouTubeDownloaderGUI:
                     video_frame.columnconfigure(2, weight=1)
                     
                     var = tk.BooleanVar(value=True)
-                    checkbox = ttk.Checkbutton(video_frame, variable=var)
-                    checkbox.grid(row=0, column=0, padx=(0, 8))
-                    
-                    # Thumbnail icon (clickable)
-                    thumb_btn = ttk.Button(video_frame, text="🖼️", width=2, style="TButton")
-                    thumb_btn.grid(row=0, column=1, padx=(0, 8))
-                    
-                    # Video title
-                    title = entry.get('title', 'Unknown Title')
-                    title_label = ttk.Label(video_frame, text=title, wraplength=400, font=("Segoe UI", 10, "bold" if var.get() else "normal"))
-                    title_label.grid(row=0, column=2, sticky=tk.W)
-                    
-                    # Store video info
                     video_info = {
                         'id': entry.get('id'),
-                        'title': title,
+                        'title': entry.get('title', 'Unknown Title'),
                         'duration': entry.get('duration'),
                         'thumbnail': entry.get('thumbnail'),
                         'checkbox_var': var,
-                        'thumb_btn': thumb_btn,
+                        'thumb_btn': None, # Will be created below
                         'video_frame': video_frame,
                         'thumbnail_loaded': False,
                         'thumbnail_label': None
                     }
+                    checkbox = ttk.Checkbutton(video_frame, variable=var, command=lambda v=video_info, v_var=var: self.toggle_video_selection(v, v_var))
+                    checkbox.grid(row=0, column=0, padx=(0, 8))
+                    self.video_checkboxes.append(var)
+                    
+                    # Thumbnail icon (clickable)
+                    thumb_btn = ttk.Button(video_frame, text="🖼️", width=2, style="TButton")
+                    thumb_btn.grid(row=0, column=1, padx=(0, 8))
+                    video_info['thumb_btn'] = thumb_btn
+                    
+                    # Video title
+                    title = entry.get('title', 'Unknown Title')
+                    title_label = ttk.Label(video_frame, text=title, wraplength=400, font=("Segoe UI", 10))
+                    title_label.grid(row=0, column=2, sticky=tk.W)
+                    
                     self.playlist_videos.append(video_info)
+                    self.selected_videos.append(video_info) # Initially select all
                     
                     # Bind click to load thumbnail for this video
                     def make_thumb_loader(vidx):
@@ -453,7 +534,8 @@ class YouTubeDownloaderGUI:
             self.is_playlist = False
             self.download_btn.config(text="Download Video")
             
-            # Single video info
+            self.playlist_controls_frame.grid_remove() # Hide controls
+            
             info_text = f"Title: {info.get('title', 'Unknown')}\n"
             info_text += f"Duration: {self.format_duration(info.get('duration', 0))}\n"
             info_text += f"Uploader: {info.get('uploader', 'Unknown')}\n"
@@ -470,10 +552,30 @@ class YouTubeDownloaderGUI:
             
             self.status_text.set("Video information loaded successfully")
         
+        self.info_scrollable_frame.update_idletasks()
+        self.root.update_idletasks()
+        main_canvas.yview_moveto(0)
+
+    def select_all(self):
+        for var in self.video_checkboxes:
+            var.set(True)
+        self.selected_videos = list(self.playlist_videos)
+
+    def deselect_all(self):
+        for var in self.video_checkboxes:
+            var.set(False)
+        self.selected_videos = []
+        
+    def toggle_video_selection(self, video, var):
+        if var.get():
+            self.selected_videos.append(video)
+        else:
+            self.selected_videos = [v for v in self.selected_videos if v['id'] != video['id']]
+
     def format_duration(self, seconds):
         """Format duration in seconds to HH:MM:SS"""
-        if not seconds:
-            return "Unknown"
+        if seconds is None:
+            return "N/A"
         hours = seconds // 3600
         minutes = (seconds % 3600) // 60
         secs = seconds % 60
@@ -586,6 +688,9 @@ class YouTubeDownloaderGUI:
             else:
                 self.download_single_video_with_retry(url, download_path, quality)
                 
+        except DownloadCancelled:
+            # User cancelled, do nothing. download_finished will be called.
+            pass
         except Exception as e:
             tb = traceback.format_exc()
             error_msg = f"Download failed: {str(e)}"
@@ -605,7 +710,10 @@ class YouTubeDownloaderGUI:
                     self.ydl_instance = ydl
                     ydl.download([url])
                     break  # Success, exit retry loop
-                    
+            
+            except DownloadCancelled:
+                raise  # Re-raise to be caught by download_video
+
             except Exception as e:
                 self.retry_count += 1
                 error_msg = str(e).lower()
@@ -656,7 +764,10 @@ class YouTubeDownloaderGUI:
                         downloaded_videos += 1
                         video_success = True
                         break  # Success, move to next video
-                        
+                
+                except DownloadCancelled:
+                    raise # Re-raise to be caught by download_video
+
                 except Exception as e:
                     self.retry_count += 1
                     error_msg = str(e).lower()
@@ -687,6 +798,7 @@ class YouTubeDownloaderGUI:
         # Complete overall progress
         if not self.download_cancelled:
             self.root.after(0, lambda: self.overall_progress.set(100))
+            self.root.after(0, lambda: self.delete_btn.config(state="normal"))
             
             # Show final status
             if failed_videos:
@@ -709,6 +821,7 @@ class YouTubeDownloaderGUI:
                     )
             else:
                 self.root.after(0, lambda: self.overall_status.set(f"All {downloaded_videos} videos downloaded successfully!"))
+                self.root.after(0, lambda: self.delete_btn.config(state="normal"))
     
     def download_finished(self):
         """Called when download is finished (success or failure)"""
@@ -722,6 +835,9 @@ class YouTubeDownloaderGUI:
         
         if not self.download_cancelled:
             self.download_progress.set(100)
+            if not self.is_playlist:
+                self.delete_btn.config(state="normal")
+
             if self.is_playlist:
                 self.status_text.set("All selected videos downloaded successfully!")
             else:
@@ -729,6 +845,7 @@ class YouTubeDownloaderGUI:
             messagebox.showinfo("Success", "Download completed successfully!")
         else:
             self.status_text.set("Download was cancelled")
+            self.delete_btn.config(state="disabled")
     
     def get_ydl_options(self, download_path, quality):
         """Get yt-dlp options based on quality selection with resume support"""
@@ -786,7 +903,7 @@ class YouTubeDownloaderGUI:
     def progress_hook(self, d):
         """Progress hook for yt-dlp with enhanced error handling"""
         if self.download_cancelled:
-            return
+            raise DownloadCancelled("Download cancelled by user.")
             
         if d['status'] == 'downloading':
             # Update progress bar
@@ -815,7 +932,9 @@ class YouTubeDownloaderGUI:
             
         elif d['status'] == 'finished':
             self.root.after(0, lambda: self.status_text.set("Processing video..."))
-            
+            if 'filename' in d:
+                self.last_downloaded_file = d['filename']
+
         elif d['status'] == 'error':
             error_msg = d.get('error', 'Unknown error')
             self.root.after(0, lambda: self.status_text.set(f"Error: {error_msg}"))
@@ -935,6 +1054,41 @@ class YouTubeDownloaderGUI:
         else:
             self.status_text.set("Network connection failed")
             messagebox.showerror("Network Test", f"❌ {message}\n\nPlease check your internet connection and try again.")
+
+    def save_last_location(self, show_message=True):
+        """Save the last download location to a config file"""
+        last_location = self.download_path.get()
+        config = {
+            "last_location": last_location
+        }
+        with open("config.json", "w") as f:
+            json.dump(config, f)
+        if show_message:
+            messagebox.showinfo("Success", "Last download location saved successfully.")
+
+    def load_last_location(self):
+        """Load the last download location from a config file"""
+        try:
+            with open("config.json", "r") as f:
+                config = json.load(f)
+                last_location = config.get("last_location", "")
+                if last_location:
+                    self.download_path.set(last_location)
+        except FileNotFoundError:
+            pass
+
+    def delete_file(self):
+        if not self.last_downloaded_file or not os.path.exists(self.last_downloaded_file):
+            messagebox.showerror("Error", "No file to delete or file not found.")
+            return
+
+        try:
+            os.remove(self.last_downloaded_file)
+            messagebox.showinfo("Success", f"File '{os.path.basename(self.last_downloaded_file)}' deleted successfully.")
+            self.status_text.set("File deleted.")
+            self.delete_btn.config(state="disabled")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to delete file: {e}")
 
 def main():
     root = tk.Tk()
