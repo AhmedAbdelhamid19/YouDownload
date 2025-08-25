@@ -455,7 +455,6 @@ class YouTubeDownloaderGUI:
 			ydl_opts = {
 				'quiet': True,
 				'no_warnings': True,
-				'extract_flat': True,  # Extract playlist info
 				'playlist_items': '1-50',  # Limit to first 50 videos for speed
 			}
 			
@@ -532,9 +531,13 @@ class YouTubeDownloaderGUI:
 					thumb_btn.grid(row=0, column=1, padx=(0, 8))
 					video_info['thumb_btn'] = thumb_btn
 					
-					# Video title
+					# Video title and info
 					title = entry.get('title', 'Unknown Title')
-					title_label = ttk.Label(video_frame, text=title, wraplength=400, font=("Segoe UI", 10))
+					duration = entry.get('duration')
+					duration_str = self.format_duration(duration) if duration else "N/A"
+					
+					title_text = f"{title}\nDuration: {duration_str}"
+					title_label = ttk.Label(video_frame, text=title_text, wraplength=400, font=("Segoe UI", 10))
 					title_label.grid(row=0, column=2, sticky=tk.W)
 					
 					self.playlist_videos.append(video_info)
@@ -908,13 +911,17 @@ class YouTubeDownloaderGUI:
 		elif quality == "Best Quality":
 			ydl_opts['format'] = 'bestvideo+bestaudio/best'
 		elif quality == "1080p":
-			ydl_opts['format'] = 'bestvideo[height<=1080]+bestaudio/best[height<=1080]/best'
+			# Try 1080p first, fallback to best available
+			ydl_opts['format'] = 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[height<=1080]/bestvideo+bestaudio/best'
 		elif quality == "720p":
-			ydl_opts['format'] = 'bestvideo[height<=720]+bestaudio/best[height<=720]/best'
+			# Try 720p first, fallback to best available
+			ydl_opts['format'] = 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=720]+bestaudio/best[height<=720]/bestvideo+bestaudio/best'
 		elif quality == "480p":
-			ydl_opts['format'] = 'bestvideo[height<=480]+bestaudio/best[height<=480]/best'
+			# Try 480p first, fallback to best available
+			ydl_opts['format'] = 'bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=480]+bestaudio/best[height<=480]/bestvideo+bestaudio/best'
 		elif quality == "360p":
-			ydl_opts['format'] = 'bestvideo[height<=360]+bestaudio/best[height<=360]/best'
+			# Try 360p first, fallback to best available
+			ydl_opts['format'] = 'bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=360]+bestaudio/best[height<=360]/bestvideo+bestaudio/best'
 		else:
 			ydl_opts['format'] = 'bestvideo+bestaudio/best'
 		

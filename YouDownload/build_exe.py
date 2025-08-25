@@ -1,5 +1,6 @@
 import subprocess
 import sys
+import os
 
 def build_exe():
 	print("Building YouDownload.exe...")
@@ -9,6 +10,7 @@ def build_exe():
 		print("PyInstaller not found. Installing...")
 		subprocess.check_call([sys.executable, "-m", "pip", "install", "pyinstaller"])
 
+	# Use proper Windows syntax for PyInstaller
 	cmd = [
 		sys.executable, "-m", "PyInstaller",
 		"--onefile",
@@ -21,14 +23,19 @@ def build_exe():
 		"--hidden-import=PIL.ImageTk",
 		"--hidden-import=sv_ttk",
 		"--hidden-import=yt_dlp",
-		"YouDownload/youtube_downloader_gui.py",
+		"YouDownload/youtube_downloader_gui.py"
 	]
+
+	print("Running command:", " ".join(cmd))
 	res = subprocess.run(cmd, text=True, capture_output=True)
+
 	if res.returncode != 0:
-		print(res.stdout)
-		print(res.stderr)
+		print("STDOUT:", res.stdout)
+		print("STDERR:", res.stderr)
 		raise SystemExit(res.returncode)
-	print("Done. Check dist/YouDownload.exe")
+
+	print("Build completed successfully!")
+	print("Check dist/YouDownload.exe")
 
 if __name__ == "__main__":
 	build_exe()
