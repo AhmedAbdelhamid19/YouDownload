@@ -452,10 +452,13 @@ class YouTubeDownloaderGUI:
 			# Show loading message
 			self.root.after(0, lambda: self.loading_label.config(text="Fetching information... Please wait..."))
 			
+			# Use minimal options for info extraction - no format restrictions
 			ydl_opts = {
 				'quiet': True,
 				'no_warnings': True,
+				'extract_flat': False,  # Get full info for better display
 				'playlist_items': '1-50',  # Limit to first 50 videos for speed
+				'skip': ['dash', 'live'],  # Skip problematic formats
 			}
 			
 			with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -465,8 +468,25 @@ class YouTubeDownloaderGUI:
 				self.root.after(0, self.update_video_info, info)
 				
 		except Exception as e:
-			tb = traceback.format_exc()
-			self.root.after(0, lambda: self.show_error(f"Error fetching video info: {str(e)}\n\n{tb}"))
+			# If full extraction fails, try with extract_flat as fallback
+			print(f"Full extraction failed, trying fallback: {e}")
+			try:
+				self.root.after(0, lambda: self.loading_label.config(text="Trying fallback method..."))
+				
+				ydl_opts_fallback = {
+					'quiet': True,
+					'no_warnings': True,
+					'extract_flat': True,  # Use flat extraction as fallback
+					'playlist_items': '1-50',
+				}
+				
+				with yt_dlp.YoutubeDL(ydl_opts_fallback) as ydl:
+					info = ydl.extract_info(url, download=False)
+					self.root.after(0, self.update_video_info, info)
+					
+			except Exception as e2:
+				tb = traceback.format_exc()
+				self.root.after(0, lambda: self.show_error(f"Error fetching video info: {str(e)}\n\nFallback also failed: {str(e2)}\n\n{tb}"))
 		finally:
 			self.root.after(0, lambda: self.download_btn.config(state="normal"))
 			self.root.after(0, lambda: self.loading_label.config(text=""))
@@ -505,50 +525,54 @@ class YouTubeDownloaderGUI:
 			
 			row = 1
 			for i, entry in enumerate(info.get('entries', [])):
-				if entry:
-					video_frame = ttk.Frame(self.info_scrollable_frame)
-					video_frame.grid(row=row, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=2, padx=2)
-					video_frame.columnconfigure(2, weight=1)
-					
-					var = tk.BooleanVar(value=True)
-					video_info = {
-						'id': entry.get('id'),
-						'title': entry.get('title', 'Unknown Title'),
-						'duration': entry.get('duration'),
-						'thumbnail': entry.get('thumbnail'),
-						'checkbox_var': var,
-						'thumb_btn': None, # Will be created below
-						'video_frame': video_frame,
-						'thumbnail_loaded': False,
-						'thumbnail_label': None
-					}
-					checkbox = ttk.Checkbutton(video_frame, variable=var, command=lambda v=video_info, v_var=var: self.toggle_video_selection(v, v_var))
-					checkbox.grid(row=0, column=0, padx=(0, 8))
-					self.video_checkboxes.append(var)
-					
-					# Thumbnail icon (clickable)
-					thumb_btn = ttk.Button(video_frame, text="🖼️", width=2, style="TButton")
-					thumb_btn.grid(row=0, column=1, padx=(0, 8))
-					video_info['thumb_btn'] = thumb_btn
-					
-					# Video title and info
-					title = entry.get('title', 'Unknown Title')
-					duration = entry.get('duration')
-					duration_str = self.format_duration(duration) if duration else "N/A"
-					
-					title_text = f"{title}\nDuration: {duration_str}"
-					title_label = ttk.Label(video_frame, text=title_text, wraplength=400, font=("Segoe UI", 10))
-					title_label.grid(row=0, column=2, sticky=tk.W)
-					
-					self.playlist_videos.append(video_info)
-					self.selected_videos.append(video_info) # Initially select all
-					
-					# Bind click to load thumbnail for this video
-					def make_thumb_loader(vidx):
-						return lambda: self.load_single_thumbnail(vidx)
-					thumb_btn.config(command=make_thumb_loader(i))
-					
-					row += 1
+				if entry and isinstance(entry, dict):  # Ensure entry is valid
+					try:
+						video_frame = ttk.Frame(self.info_scrollable_frame)
+						video_frame.grid(row=row, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=2, padx=2)
+						video_frame.columnconfigure(2, weight=1)
+						
+						var = tk.BooleanVar(value=True)
+						video_info = {
+							'id': entry.get('id', f'video_{i}'),
+							'title': entry.get('title', f'Video {i+1}'),
+							'duration': entry.get('duration'),
+							'thumbnail': entry.get('thumbnail'),
+							'checkbox_var': var,
+							'thumb_btn': None, # Will be created below
+							'video_frame': video_frame,
+							'thumbnail_loaded': False,
+							'thumbnail_label': None
+						}
+						checkbox = ttk.Checkbutton(video_frame, variable=var, command=lambda v=video_info, v_var=var: self.toggle_video_selection(v, v_var))
+						checkbox.grid(row=0, column=0, padx=(0, 8))
+						self.video_checkboxes.append(var)
+						
+						# Thumbnail icon (clickable)
+						thumb_btn = ttk.Button(video_frame, text="🖼️", width=2, style="TButton")
+						thumb_btn.grid(row=0, column=1, padx=(0, 8))
+						video_info['thumb_btn'] = thumb_btn
+						
+						# Video title and info
+						title = entry.get('title', f'Video {i+1}')
+						duration = entry.get('duration')
+						duration_str = self.format_duration(duration) if duration else "N/A"
+						
+						title_text = f"{title}\nDuration: {duration_str}"
+						title_label = ttk.Label(video_frame, text=title_text, wraplength=400, font=("Segoe UI", 10))
+						title_label.grid(row=0, column=2, sticky=tk.W)
+						
+						self.playlist_videos.append(video_info)
+						self.selected_videos.append(video_info) # Initially select all
+						
+						# Bind click to load thumbnail for this video
+						def make_thumb_loader(vidx):
+							return lambda: self.load_single_thumbnail(vidx)
+						thumb_btn.config(command=make_thumb_loader(i))
+						
+						row += 1
+					except Exception as e:
+						print(f"Error processing video {i}: {e}")
+						continue
 			
 			self.status_text.set(f"Playlist loaded: {len(self.playlist_videos)} videos")
 			
