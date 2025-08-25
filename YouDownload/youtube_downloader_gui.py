@@ -175,6 +175,7 @@ class YouTubeDownloaderGUI:
 		]:
 			if os.path.exists(candidate):
 				try:
+					from PIL import Image, ImageTk
 					logo_img = Image.open(candidate)
 					logo_img = logo_img.resize((64, 64), Image.Resampling.LANCZOS)
 					self.logo_photo = ImageTk.PhotoImage(logo_img)
@@ -182,7 +183,7 @@ class YouTubeDownloaderGUI:
 					logo_label.grid(row=0, column=0, rowspan=2, sticky=tk.W, padx=(0, 15))
 					break
 				except Exception as e:
-					print(f"Failed to load logo: {e}")
+					print(f"Failed to load logo from {candidate}: {e}")
 
 		# Title
 		title_label = ttk.Label(header_frame, text="YouDownload", font=("Segoe UI", 22, "bold"))
@@ -452,13 +453,13 @@ class YouTubeDownloaderGUI:
 			# Show loading message
 			self.root.after(0, lambda: self.loading_label.config(text="Fetching information... Please wait..."))
 			
-			# Use minimal options for info extraction - no format restrictions
+			# Use options that get full info for playlists
 			ydl_opts = {
 				'quiet': True,
 				'no_warnings': True,
-				'extract_flat': False,  # Get full info for better display
+				'ignoreerrors': True,  # Ignore errors during info extraction for robustness
 				'playlist_items': '1-50',  # Limit to first 50 videos for speed
-				'skip': ['dash', 'live'],  # Skip problematic formats
+				'skip': ['dash', 'live'],  # Skip problematic formats during info extraction
 			}
 			
 			with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -468,25 +469,8 @@ class YouTubeDownloaderGUI:
 				self.root.after(0, self.update_video_info, info)
 				
 		except Exception as e:
-			# If full extraction fails, try with extract_flat as fallback
-			print(f"Full extraction failed, trying fallback: {e}")
-			try:
-				self.root.after(0, lambda: self.loading_label.config(text="Trying fallback method..."))
-				
-				ydl_opts_fallback = {
-					'quiet': True,
-					'no_warnings': True,
-					'extract_flat': True,  # Use flat extraction as fallback
-					'playlist_items': '1-50',
-				}
-				
-				with yt_dlp.YoutubeDL(ydl_opts_fallback) as ydl:
-					info = ydl.extract_info(url, download=False)
-					self.root.after(0, self.update_video_info, info)
-					
-			except Exception as e2:
-				tb = traceback.format_exc()
-				self.root.after(0, lambda: self.show_error(f"Error fetching video info: {str(e)}\n\nFallback also failed: {str(e2)}\n\n{tb}"))
+			tb = traceback.format_exc()
+			self.root.after(0, lambda: self.show_error(f"Error fetching video info: {str(e)}\n\n{tb}"))
 		finally:
 			self.root.after(0, lambda: self.download_btn.config(state="normal"))
 			self.root.after(0, lambda: self.loading_label.config(text=""))
@@ -556,8 +540,11 @@ class YouTubeDownloaderGUI:
 						title = entry.get('title', f'Video {i+1}')
 						duration = entry.get('duration')
 						duration_str = self.format_duration(duration) if duration else "N/A"
+						uploader = entry.get('uploader', 'Unknown')
+						view_count = entry.get('view_count')
+						view_str = f"{view_count:,}" if view_count and isinstance(view_count, (int, float)) else "Unknown"
 						
-						title_text = f"{title}\nDuration: {duration_str}"
+						title_text = f"{title}\nDuration: {duration_str} | Uploader: {uploader} | Views: {view_str}"
 						title_label = ttk.Label(video_frame, text=title_text, wraplength=400, font=("Segoe UI", 10))
 						title_label.grid(row=0, column=2, sticky=tk.W)
 						
@@ -586,7 +573,11 @@ class YouTubeDownloaderGUI:
 			info_text = f"Title: {info.get('title', 'Unknown')}\n"
 			info_text += f"Duration: {self.format_duration(info.get('duration', 0))}\n"
 			info_text += f"Uploader: {info.get('uploader', 'Unknown')}\n"
-			info_text += f"Views: {info.get('view_count', 'Unknown'):,}\n"
+			view_count = info.get('view_count')
+			if view_count and isinstance(view_count, (int, float)):
+				info_text += f"Views: {view_count:,}\n"
+			else:
+				info_text += f"Views: Unknown\n"
 			info_text += f"Upload Date: {info.get('upload_date', 'Unknown')}\n"
 			
 			# Get available formats
@@ -899,7 +890,6 @@ class YouTubeDownloaderGUI:
 		ydl_opts = {
 			'outtmpl': os.path.join(download_path, '%(title)s.%(ext)s'),
 			'progress_hooks': [self.progress_hook],
-			'noplaylist': True,
 			'concurrent_fragment_downloads': 4,
 			'retries': 3,  # yt-dlp internal retries
 			'fragment_retries': 3,
@@ -908,7 +898,7 @@ class YouTubeDownloaderGUI:
 			'socket_timeout': 30,  # 30 seconds timeout
 			'http_chunk_size': 10485760,  # 10MB chunks for better resume support
 			'continue_dl': True,  # Continue partial downloads
-			'ignoreerrors': False,  # Don't ignore errors, handle them properly
+			'ignoreerrors': True,  # Ignore errors to continue with other videos
 			'no_warnings': False,  # Show warnings for debugging
 		}
 		
@@ -932,22 +922,9 @@ class YouTubeDownloaderGUI:
 				'embedthumbnail': True,  # Explicitly request embedding
 				'addmetadata': True,     # Add metadata
 			})
-		elif quality == "Best Quality":
-			ydl_opts['format'] = 'bestvideo+bestaudio/best'
-		elif quality == "1080p":
-			# Try 1080p first, fallback to best available
-			ydl_opts['format'] = 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[height<=1080]/bestvideo+bestaudio/best'
-		elif quality == "720p":
-			# Try 720p first, fallback to best available
-			ydl_opts['format'] = 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=720]+bestaudio/best[height<=720]/bestvideo+bestaudio/best'
-		elif quality == "480p":
-			# Try 480p first, fallback to best available
-			ydl_opts['format'] = 'bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=480]+bestaudio/best[height<=480]/bestvideo+bestaudio/best'
-		elif quality == "360p":
-			# Try 360p first, fallback to best available
-			ydl_opts['format'] = 'bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=360]+bestaudio/best[height<=360]/bestvideo+bestaudio/best'
 		else:
-			ydl_opts['format'] = 'bestvideo+bestaudio/best'
+			# For all video qualities, use the most basic format that always works
+			ydl_opts['format'] = 'best'
 		
 		return ydl_opts
 			
