@@ -14,19 +14,8 @@ import signal
 import socket
 import sv_ttk
 import json
-import sys
 
 APP_VERSION = "v2.1"  # Update as needed
-
-def get_resource_path(relative_path):
-    """Get absolute path to resource, works for dev and for PyInstaller"""
-    try:
-        # PyInstaller creates a temp folder and stores path in _MEIPASS
-        base_path = sys._MEIPASS
-    except Exception:
-        base_path = os.path.abspath(".")
-    
-    return os.path.join(base_path, relative_path)
 
 class DownloadCancelled(Exception):
     pass
@@ -98,44 +87,21 @@ class YouTubeDownloaderGUI:
     def check_dependencies(self):
         """Check for yt-dlp and ffmpeg, disable download if missing."""
         errors = []
-        
         # Check yt-dlp
         try:
             import yt_dlp
-            print("✅ yt-dlp found")
         except ImportError:
             errors.append("yt-dlp is not installed. Please run: pip install yt-dlp")
-            print("❌ yt-dlp not found")
-        
-        # Check ffmpeg - try multiple locations
-        ffmpeg_found = False
-        ffmpeg_paths = [
-            shutil.which("ffmpeg"),
-            os.path.join(os.path.dirname(sys.executable), "ffmpeg.exe"),
-            os.path.join(os.path.dirname(__file__), "ffmpeg.exe"),
-            get_resource_path("ffmpeg.exe"),
-            get_resource_path("../ffmpeg.exe")
-        ]
-        
-        for ffmpeg_path in ffmpeg_paths:
-            if ffmpeg_path and os.path.exists(ffmpeg_path):
-                ffmpeg_found = True
-                print(f"✅ FFmpeg found at: {ffmpeg_path}")
-                break
-        
-        if not ffmpeg_found:
-            errors.append("FFmpeg is not installed or not in PATH. Please install FFmpeg or place ffmpeg.exe in the same folder as the application.")
-            print("❌ FFmpeg not found")
-        
+        # Check ffmpeg
+        if shutil.which("ffmpeg") is None:
+            errors.append("FFmpeg is not installed or not in PATH. Please install FFmpeg.")
         if errors:
-            if hasattr(self, 'download_btn'):
-                self.download_btn.config(state="disabled")
+            self.download_btn.config(state="disabled")
             self.status_text.set("Dependency error!")
             self.show_error("\n".join(errors), log_only=True)
         else:
             if hasattr(self, 'download_btn'):
                 self.download_btn.config(state="normal")
-            print("✅ All dependencies satisfied")
         
     def setup_ui(self):
         # Allow the main window grid to expand
@@ -192,28 +158,16 @@ class YouTubeDownloaderGUI:
         header_frame.columnconfigure(1, weight=1)
 
         # Logo at the top
-        logo_paths = [
-            get_resource_path("../youtube_downloader_logo.png"),
-            get_resource_path("youtube_downloader_logo.png"),
-            get_resource_path("../../youtube_downloader_logo.png"),
-            os.path.join(os.path.dirname(__file__), "../youtube_downloader_logo.png"),
-            os.path.join(os.path.dirname(__file__), "youtube_downloader_logo.png")
-        ]
-        
-        logo_loaded = False
-        for logo_path in logo_paths:
-            if os.path.exists(logo_path):
-                try:
-                    logo_img = Image.open(logo_path)
-                    logo_img = logo_img.resize((64, 64), Image.Resampling.LANCZOS)
-                    self.logo_photo = ImageTk.PhotoImage(logo_img)
-                    logo_label = ttk.Label(header_frame, image=self.logo_photo)
-                    logo_label.grid(row=0, column=0, rowspan=2, sticky=tk.W, padx=(0, 15))
-                    logo_loaded = True
-                    break
-                except Exception as e:
-                    print(f"Failed to load logo from {logo_path}: {e}")
-                    continue
+        logo_path = os.path.join(os.path.dirname(__file__), "../youtube_downloader_logo.png")
+        if os.path.exists(logo_path):
+            try:
+                logo_img = Image.open(logo_path)
+                logo_img = logo_img.resize((64, 64), Image.Resampling.LANCZOS)
+                self.logo_photo = ImageTk.PhotoImage(logo_img)
+                logo_label = ttk.Label(header_frame, image=self.logo_photo)
+                logo_label.grid(row=0, column=0, rowspan=2, sticky=tk.W, padx=(0, 15))
+            except Exception:
+                pass
 
         # Title
         title_label = ttk.Label(header_frame, text="YouDownload", font=("Segoe UI", 22, "bold"))
@@ -352,22 +306,13 @@ class YouTubeDownloaderGUI:
         # Try to load button icons
         self.button_icons = {}
         try:
-            # Try multiple possible icon locations
-            possible_icon_dirs = [
-                get_resource_path("../icons"),
-                get_resource_path("icons"),
-                get_resource_path("../../icons"),
-                os.path.join(os.path.dirname(__file__), "../icons"),
-                os.path.join(os.path.dirname(__file__), "icons")
-            ]
+            # Check if icons directory exists (for development)
+            icons_dir = os.path.join(os.path.dirname(__file__), "../icons")
+            if not os.path.exists(icons_dir):
+                # Check if icons are in the same directory as the script (for executable)
+                icons_dir = os.path.join(os.path.dirname(__file__), "icons")
             
-            icons_dir = None
-            for dir_path in possible_icon_dirs:
-                if os.path.exists(dir_path):
-                    icons_dir = dir_path
-                    break
-            
-            if icons_dir:
+            if os.path.exists(icons_dir):
                 from PIL import Image, ImageTk
                 
                 # Load icons
@@ -671,9 +616,6 @@ class YouTubeDownloaderGUI:
             if not self.selected_videos:
                 messagebox.showerror("Error", "Please select at least one video to download")
                 return
-        else:
-            # For single video, create a dummy selection
-            self.selected_videos = [{'id': 'single_video', 'title': 'Video'}]
         
         # Reset download state
         self.is_downloading = True
@@ -921,10 +863,6 @@ class YouTubeDownloaderGUI:
             'continue_dl': True,  # Continue partial downloads
             'ignoreerrors': False,  # Don't ignore errors, handle them properly
             'no_warnings': False,  # Show warnings for debugging
-            'progress': True,  # Enable progress reporting
-            'newline': True,  # Better progress output
-            'updatetime': True,  # Update file modification time
-            'writethumbnail': True,  # Download thumbnail for metadata
         }
         
         if quality == "Audio Only (MP3)":
@@ -972,57 +910,23 @@ class YouTubeDownloaderGUI:
             percent = 0
             mb_downloaded = 0
             mb_total = 0
-            
-            # Try multiple ways to get total size
-            total_bytes = None
             if 'total_bytes' in d and d['total_bytes']:
-                total_bytes = d['total_bytes']
-            elif 'total_bytes_estimate' in d and d['total_bytes_estimate']:
-                total_bytes = d['total_bytes_estimate']
-            elif 'filesize' in d and d['filesize']:
-                total_bytes = d['filesize']
-            
-            # Calculate downloaded bytes
-            downloaded_bytes = d.get('downloaded_bytes', 0)
-            if downloaded_bytes:
-                mb_downloaded = downloaded_bytes / (1024 * 1024)
-                
-                # Calculate percentage if we have total size
-                if total_bytes and total_bytes > 0:
-                    percent = (downloaded_bytes / total_bytes) * 100
-                    mb_total = total_bytes / (1024 * 1024)
-                    # Update progress bar only when we have valid percentage
-                    self.root.after(0, lambda: self.download_progress.set(percent))
-                else:
-                    # Estimate progress based on downloaded amount (rough estimate)
-                    # This is a fallback when total size is unknown
-                    if mb_downloaded > 0:
-                        # Assume typical video sizes and estimate progress
-                        if mb_downloaded < 10:
-                            percent = min(10, (mb_downloaded / 10) * 10)
-                        elif mb_downloaded < 50:
-                            percent = min(30, 10 + (mb_downloaded / 50) * 20)
-                        elif mb_downloaded < 100:
-                            percent = min(60, 30 + (mb_downloaded / 100) * 30)
-                        else:
-                            percent = min(90, 60 + (mb_downloaded / 200) * 30)
-                        
-                        # Update progress bar with estimated progress
-                        self.root.after(0, lambda: self.download_progress.set(percent))
+                percent = (d['downloaded_bytes'] / d['total_bytes']) * 100
+                mb_downloaded = d['downloaded_bytes'] / (1024 * 1024)
+                mb_total = d['total_bytes'] / (1024 * 1024)
+                self.root.after(0, lambda: self.download_progress.set(percent))
+            else:
+                # Fallback for unknown total size
+                if 'downloaded_bytes' in d:
+                    mb_downloaded = d['downloaded_bytes'] / (1024 * 1024)
             
             # Update status with speed information
             speed = d.get('speed', 0)
             if speed:
                 speed_mb = speed / (1024 * 1024)
-                if total_bytes and total_bytes > 0:
-                    status = f"Downloading: {percent:.1f}% ({mb_downloaded:.2f} MB / {mb_total:.2f} MB) - {speed_mb:.2f} MB/s"
-                else:
-                    status = f"Downloading: ~{percent:.0f}% ({mb_downloaded:.2f} MB) - {speed_mb:.2f} MB/s"
+                status = f"Downloading: {percent:.1f}% ({mb_downloaded:.2f} MB / {mb_total:.2f} MB) - {speed_mb:.2f} MB/s"
             else:
-                if total_bytes and total_bytes > 0:
-                    status = f"Downloading: {percent:.1f}% ({mb_downloaded:.2f} MB / {mb_total:.2f} MB)"
-                else:
-                    status = f"Downloading: ~{percent:.0f}% ({mb_downloaded:.2f} MB)"
+                status = f"Downloading: {percent:.1f}% ({mb_downloaded:.2f} MB / {mb_total:.2f} MB)"
             
             self.root.after(0, lambda: self.status_text.set(status))
             
@@ -1030,8 +934,6 @@ class YouTubeDownloaderGUI:
             self.root.after(0, lambda: self.status_text.set("Processing video..."))
             if 'filename' in d:
                 self.last_downloaded_file = d['filename']
-            # Set progress to 100% when finished
-            self.root.after(0, lambda: self.download_progress.set(100))
 
         elif d['status'] == 'error':
             error_msg = d.get('error', 'Unknown error')

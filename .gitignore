@@ -1,60 +1,73 @@
-# Build artifacts
-build/
-dist/
-*.spec
-
-# Python
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
-*$py.class
+*.pyo
+*.pyd
+
+# C extensions
 *.so
+
+# Distribution / packaging
 .Python
 env/
-venv/
-ENV/
-env.bak/
-venv.bak/
+build/
+dist/
+*.egg-info/
+*.eggs/
+*.manifest
+*.spec
+*.wheel
+*.egg
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
 
 # PyInstaller
+#  Usually these files are written by a python script from a template
 *.manifest
 *.spec
 
-# Executables
+# Installer output
 *.exe
 *.msi
 *.dmg
+*.pkg
 *.app
 
-# Temporary files
-*.tmp
-*.temp
+# Logs
 *.log
 error_log.txt
 
-# IDE files
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
+# Local config
+config.json
 
-# OS files
-.DS_Store
-Thumbs.db
-desktop.ini
-
-# Configuration files (optional - uncomment if you don't want to track these)
-# config.json
-
-# Downloaded files
-*.mp4
-*.mp3
-*.webm
-*.mkv
-*.avi
-*.mov
-
-# Icons and images (keep these in git)
+# Ignore icons only if generated, not source
 # icons/
-# *.png
-# *.ico 
+
+# VS Code settings
+.vscode/
+
+# MacOS
+.DS_Store
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# Other
+*.bak
+*.tmp 
